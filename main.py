@@ -3,7 +3,7 @@ import os
 import subprocess
 from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, 
                              QHBoxLayout, QPushButton, QLabel, QFileDialog, 
-                             QSlider, QMessageBox, QStatusBar)
+                             QSlider, QMessageBox, QStatusBar, QCheckBox)
 from PyQt6.QtCore import Qt, QUrl
 from PyQt6.QtMultimedia import QMediaPlayer, QAudioOutput
 from PyQt6.QtMultimediaWidgets import QVideoWidget
@@ -79,10 +79,22 @@ class VideoTrimmer(QMainWindow):
         vbox.addLayout(hbox_trim)
         
         # Bottom controls
+        hbox_bottom = QHBoxLayout()
         self.btn_trim = QPushButton("Trim and Save Video")
         self.btn_trim.setEnabled(False)
         self.btn_trim.setMinimumHeight(40)
-        vbox.addWidget(self.btn_trim)
+        
+        self.cb_remove_audio = QCheckBox("Remove Audio")
+        
+        hbox_bottom.addWidget(self.btn_trim, stretch=2)
+        hbox_bottom.addWidget(self.cb_remove_audio)
+        vbox.addLayout(hbox_bottom)
+        
+        # Tools controls
+        hbox_tools = QHBoxLayout()
+        self.btn_merge = QPushButton("Merge Videos...")
+        hbox_tools.addWidget(self.btn_merge)
+        vbox.addLayout(hbox_tools)
         
         central_widget.setLayout(vbox)
         
@@ -96,6 +108,7 @@ class VideoTrimmer(QMainWindow):
         self.btn_set_start.clicked.connect(self.set_start_time)
         self.btn_set_end.clicked.connect(self.set_end_time)
         self.btn_trim.clicked.connect(self.trim_video)
+        self.btn_merge.clicked.connect(self.merge_videos)
         
         self.media_player.positionChanged.connect(self.position_changed)
         self.media_player.durationChanged.connect(self.duration_changed)
@@ -210,9 +223,13 @@ class VideoTrimmer(QMainWindow):
             "-ss", str(start_sec),
             "-to", str(end_sec),
             "-i", self.video_path,
-            "-c", "copy",
-            output_path
+            "-c", "copy"
         ]
+        
+        if self.cb_remove_audio.isChecked():
+            cmd.append("-an")
+            
+        cmd.append(output_path)
         
         try:
             # We use subprocess.run so it runs synchronously and fast
@@ -229,6 +246,67 @@ class VideoTrimmer(QMainWindow):
         except Exception as e:
             self.status_bar.showMessage("Error trimming video.", 5000)
             QMessageBox.critical(self, "Exception", f"Could not trim video:\n{str(e)}")
+
+    def merge_videos(self):
+        file_paths, _ = QFileDialog.getOpenFileNames(
+            self, "Select Videos to Merge (must be same format/codecs)", "", "Video Files (*.mp4 *.mkv *.avi *.mov *.webm)"
+        )
+        if not file_paths or len(file_paths) < 2:
+            if file_paths: # if they only selected 1
+                QMessageBox.warning(self, "Merge Videos", "Please select at least 2 videos to merge.")
+            return
+
+        output_path, _ = QFileDialog.getSaveFileName(
+            self, "Save Merged Video", 
+            os.path.splitext(file_paths[0])[0] + "_merged.mp4", 
+            "Video Files (*.mp4 *.mkv *.avi)"
+        )
+        if not output_path:
+            return
+
+        self.status_bar.showMessage("Merging videos... Please wait.")
+        QApplication.processEvents()
+
+        # Create the temp file list
+        list_file_path = os.path.join(os.path.dirname(output_path), "merge_list_tmp.txt")
+        try:
+            with open(list_file_path, "w") as f:
+                for path in file_paths:
+                    # Escape single quotes in path if necessary
+                    safe_path = path.replace("'", "'\\''")
+                    f.write(f"file '{safe_path}'\n")
+
+            cmd = [
+                "ffmpeg",
+                "-y",
+                "-f", "concat",
+                "-safe", "0",
+                "-i", list_file_path,
+                "-c", "copy"
+            ]
+            
+            if self.cb_remove_audio.isChecked():
+                cmd.append("-an")
+                
+            cmd.append(output_path)
+
+            result = subprocess.run(cmd, capture_output=True, text=True)
+            
+            if result.returncode == 0:
+                self.status_bar.showMessage(f"Successfully saved to {os.path.basename(output_path)}", 5000)
+                QMessageBox.information(self, "Success", f"Videos merged successfully!\nSaved to: {output_path}")
+            else:
+                self.status_bar.showMessage("Error merging videos.", 5000)
+                QMessageBox.critical(self, "Error", f"FFmpeg error:\n{result.stderr}")
+        except Exception as e:
+            self.status_bar.showMessage("Error merging videos.", 5000)
+            QMessageBox.critical(self, "Exception", f"Could not merge videos:\n{str(e)}")
+        finally:
+            if os.path.exists(list_file_path):
+                try:
+                    os.remove(list_file_path)
+                except:
+                    pass
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)

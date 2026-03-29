@@ -6,6 +6,8 @@ A simple, lightweight video trimmer built with Python and PyQt6. It uses FFmpeg 
 
 - **Blazing Fast**: Trims video in seconds using FFmpeg's copy codec.
 - **Preview Player**: Built-in video player to find the exact frame to cut.
+- **Merge Videos**: Combine multiple video files (of the same format) into a single file quickly.
+- **Remove Audio**: Optional checkbox to export video without sound.
 - **Simple UI**: Intuitive "Set Start" and "Set End" buttons.
 - **No Quality Loss**: Direct stream copy preserves original video and audio quality.
 
@@ -45,7 +47,15 @@ A simple, lightweight video trimmer built with Python and PyQt6. It uses FFmpeg 
 3. Use the slider or Play button to navigate.
 4. Click **Set Start [** at the desired start point.
 5. Click **Set End ]** at the desired end point.
-6. Click **Trim and Save Video** to export your clip.
+6. (Optional) Check **Remove Audio** to mute the exported file.
+7. Click **Trim and Save Video** to export your clip.
+
+### Merging Videos
+
+1. Click **Merge Videos...** at the bottom of the window.
+2. Select two or more videos (they must be the same format, resolution, and codecs for FFmpeg concatenation to work correctly).
+3. Choose your output save file.
+4. The tool will safely concatenate them without re-encoding!
 
 ## License
 
