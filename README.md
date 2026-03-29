@@ -57,6 +57,4 @@ A simple, lightweight video trimmer built with Python and PyQt6. It uses FFmpeg 
 3. Choose your output save file.
 4. The tool will safely concatenate them without re-encoding!
 
-## License
-
-MIT
+NOTE:  vibe-coded
