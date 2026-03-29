@@ -4,7 +4,7 @@ import subprocess
 from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, 
                              QHBoxLayout, QPushButton, QLabel, QFileDialog, 
                              QSlider, QMessageBox, QStatusBar, QCheckBox)
-from PyQt6.QtCore import Qt, QUrl
+from PyQt6.QtCore import Qt, QUrl, QTimer
 from PyQt6.QtMultimedia import QMediaPlayer, QAudioOutput
 from PyQt6.QtMultimediaWidgets import QVideoWidget
 
@@ -131,6 +131,12 @@ class VideoTrimmer(QMainWindow):
         )
         if file_path:
             self.media_player.stop()  # Stop playback before loading a new file
+            self.media_player.setSource(QUrl()) # Clear pipeline to prevent Linux GStreamer deadlock
+            
+            # Defer loading to the event loop so the backend has time to stop rendering
+            QTimer.singleShot(50, lambda: self._load_new_video(file_path))
+
+    def _load_new_video(self, file_path):
             self.video_path = file_path
             self.lbl_file.setText(os.path.basename(file_path))
             self.lbl_file.setStyleSheet("color: black;")
@@ -140,6 +146,7 @@ class VideoTrimmer(QMainWindow):
             self.end_time_ms = 0
             self.lbl_start.setText("Start: 00:00:00.000")
             self.lbl_end.setText("End: --:--:--.---")
+            self.slider.setValue(0)
             self.btn_trim.setEnabled(True)
             self.status_bar.showMessage(f"Loaded {os.path.basename(file_path)}")
             # Autoplay the new video
