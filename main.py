@@ -130,6 +130,7 @@ class VideoTrimmer(QMainWindow):
             self, "Open Video", "", "Video Files (*.mp4 *.avi *.mkv *.mov *.webm)"
         )
         if file_path:
+            self.media_player.stop()  # Stop playback before loading a new file
             self.video_path = file_path
             self.lbl_file.setText(os.path.basename(file_path))
             self.lbl_file.setStyleSheet("color: black;")
@@ -141,9 +142,8 @@ class VideoTrimmer(QMainWindow):
             self.lbl_end.setText("End: --:--:--.---")
             self.btn_trim.setEnabled(True)
             self.status_bar.showMessage(f"Loaded {os.path.basename(file_path)}")
-            # Autoplay to initialize properly sometimes needed
+            # Autoplay the new video
             self.media_player.play()
-            self.media_player.pause()
 
     def play_pause(self):
         if self.media_player.playbackState() == QMediaPlayer.PlaybackState.PlayingState:
