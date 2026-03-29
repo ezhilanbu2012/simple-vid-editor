@@ -219,17 +219,17 @@ class VideoTrimmer(QMainWindow):
         QApplication.processEvents()
 
         # Build ffmpeg command
-        # -ss start_time -to end_time -i input -c copy output
-        # Format ms to seconds for ffmpeg
+        # We use -ss before -i for fast seek, and -t for accurate duration
         start_sec = self.start_time_ms / 1000.0
         end_sec = self.end_time_ms / 1000.0
+        duration = end_sec - start_sec
 
         cmd = [
             "ffmpeg",
             "-y", # overwrite output
             "-ss", str(start_sec),
-            "-to", str(end_sec),
             "-i", self.video_path,
+            "-t", str(duration),
             "-c", "copy"
         ]
         
@@ -255,14 +255,33 @@ class VideoTrimmer(QMainWindow):
             QMessageBox.critical(self, "Exception", f"Could not trim video:\n{str(e)}")
 
     def merge_videos(self):
-        file_paths, _ = QFileDialog.getOpenFileNames(
-            self, "Select Videos to Merge (must be same format/codecs)", "", "Video Files (*.mp4 *.mkv *.avi *.mov *.webm)"
+        file_paths = []
+        
+        # 1. Ask about currently open video
+        if self.video_path:
+            reply = QMessageBox.question(
+                self, "Include Current Video",
+                "Do you want to include the currently open video as the first video to merge?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+            )
+            if reply == QMessageBox.StandardButton.Yes:
+                file_paths.append(self.video_path)
+                
+        # 2. Select files natively without a while True loop
+        paths, _ = QFileDialog.getOpenFileNames(
+            self, "Select videos to merge (Hold Ctrl/Cmd to select multiple)", 
+            "", "Video Files (*.mp4 *.mkv *.avi *.mov *.webm)"
         )
-        if not file_paths or len(file_paths) < 2:
-            if file_paths: # if they only selected 1
+        
+        if paths:
+            file_paths.extend(paths)
+
+        if len(file_paths) < 2:
+            if file_paths: # if they only ended up with 1
                 QMessageBox.warning(self, "Merge Videos", "Please select at least 2 videos to merge.")
             return
 
+        # 3. Get save destination
         output_path, _ = QFileDialog.getSaveFileName(
             self, "Save Merged Video", 
             os.path.splitext(file_paths[0])[0] + "_merged.mp4", 
@@ -271,16 +290,18 @@ class VideoTrimmer(QMainWindow):
         if not output_path:
             return
 
-        self.status_bar.showMessage("Merging videos... Please wait.")
-        QApplication.processEvents()
+        self.status_bar.showMessage("Merging videos... Please wait. (The app will pause during this)")
+        QApplication.processEvents() # Force UI to update before subprocess blocks
 
-        # Create the temp file list
+        # 4. Create the temp file list
         list_file_path = os.path.join(os.path.dirname(output_path), "merge_list_tmp.txt")
         try:
-            with open(list_file_path, "w") as f:
+            with open(list_file_path, "w", encoding="utf-8") as f:
                 for path in file_paths:
-                    # Escape single quotes in path if necessary
-                    safe_path = path.replace("'", "'\\''")
+                    # Force forward slashes to prevent FFmpeg Windows path errors
+                    safe_path = path.replace('\\', '/')
+                    # Escape single quotes in path
+                    safe_path = safe_path.replace("'", "'\\''")
                     f.write(f"file '{safe_path}'\n")
 
             cmd = [
@@ -297,6 +318,7 @@ class VideoTrimmer(QMainWindow):
                 
             cmd.append(output_path)
 
+            # Run FFmpeg
             result = subprocess.run(cmd, capture_output=True, text=True)
             
             if result.returncode == 0:
@@ -304,7 +326,15 @@ class VideoTrimmer(QMainWindow):
                 QMessageBox.information(self, "Success", f"Videos merged successfully!\nSaved to: {output_path}")
             else:
                 self.status_bar.showMessage("Error merging videos.", 5000)
-                QMessageBox.critical(self, "Error", f"FFmpeg error:\n{result.stderr}")
+                
+                # Check for common mismatch errors in stderr
+                stderr_lower = result.stderr.lower()
+                if "non-monotonous dts" in stderr_lower or "different" in stderr_lower:
+                    QMessageBox.critical(self, "Codec/Resolution Mismatch", 
+                        "Merge Failed.\n\nBecause this tool uses fast-merging (-c copy), all selected videos MUST have the exact same resolution, framerate, and codec. If they are different, FFmpeg cannot stitch them together.\n\nFFmpeg Details:\n" + result.stderr[-400:])
+                else:
+                    QMessageBox.critical(self, "Error", f"FFmpeg error:\n{result.stderr[-1000:]}")
+                    
         except Exception as e:
             self.status_bar.showMessage("Error merging videos.", 5000)
             QMessageBox.critical(self, "Exception", f"Could not merge videos:\n{str(e)}")
